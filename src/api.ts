@@ -57,7 +57,7 @@ export type ApprovalItem = {
 
 const API_BASE = "http://127.0.0.1:8000";
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const key = localStorage.getItem("api_key");
   return key ? { "X-API-Key": key } : {};
 }
