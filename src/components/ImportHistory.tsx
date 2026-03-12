@@ -16,6 +16,8 @@ export default function ImportHistory({ items }: Props) {
             <div>
               <div className="title">{item.source_ref}</div>
               <div className="muted">Supplier: {item.supplier_id}</div>
+              {item.status && <div className="muted">Status: {item.status}</div>}
+              {item.error && <div className="muted">Error: {item.error}</div>}
             </div>
             <div className="muted">Rows: {item.total_rows}</div>
             <div className="muted">{new Date(item.imported_at).toLocaleString()}</div>

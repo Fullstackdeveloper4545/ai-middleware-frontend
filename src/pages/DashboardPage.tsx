@@ -48,7 +48,6 @@ export default function DashboardPage({
 
       <section className="action-row">
         <Link className="action-button" to="/suppliers">Add Supplier</Link>
-        <Link className="action-button" to="/attributes">Create Attribute</Link>
         <Link className="action-button outline" to="/imports">Upload CSV</Link>
       </section>
 
