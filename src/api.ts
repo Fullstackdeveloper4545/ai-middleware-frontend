@@ -67,7 +67,19 @@ export type ApprovalItem = {
 };
 
 
-export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.trim() || "http://127.0.0.1:8000";
+function normalizeApiBase(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const withoutTrailingSlashes = trimmed.replace(/\/+$/, "");
+  // Common misconfig: setting VITE_API_BASE to ".../api". Our code already prefixes "/api/...".
+  if (withoutTrailingSlashes.endsWith("/api")) {
+    return withoutTrailingSlashes.slice(0, -4);
+  }
+  return withoutTrailingSlashes;
+}
+
+export const API_BASE =
+  normalizeApiBase((import.meta.env.VITE_API_BASE as string | undefined) ?? "") || "http://127.0.0.1:8000";
 
 function authHeaders(): Record<string, string> {
   const key = localStorage.getItem("api_key");
@@ -305,7 +317,14 @@ export async function requestPasswordReset(email: string): Promise<string> {
     body: JSON.stringify({ email }),
   });
   if (!res.ok) {
-    const detail = await res.text();
+    const text = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      /* ignore */
+    }
+    const detail = parsed?.detail || text;
     throw new Error(detail || "Failed to send reset email");
   }
   const data = await res.json();
@@ -339,7 +358,14 @@ export async function login(username: string, password: string) {
     body: JSON.stringify({ username, password }),
   });
   if (!res.ok) {
-    const detail = await res.text();
+    const text = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      /* ignore */
+    }
+    const detail = parsed?.detail || text;
     throw new Error(detail || "Login failed");
   }
   return res.json();
