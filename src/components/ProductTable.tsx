@@ -9,6 +9,7 @@ type Props = {
 };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const normalizeAttributeKey = (text: string) => text.trim().replace(/[_-]+/g, " ").toLowerCase();
 
 const hasValue = (value: any) => {
   if (value === null || value === undefined) return false;
@@ -59,8 +60,8 @@ export default function ProductTable({ products, onDecision, onEdit, onDelete, a
   };
 
   return (
-    <div className="table">
-      <div className="table-head">
+    <div className="table product-table">
+      <div className="table-head product-table-head">
         <div>Title</div>
         <div>Supplier</div>
         <div>Status</div>
@@ -68,7 +69,7 @@ export default function ProductTable({ products, onDecision, onEdit, onDelete, a
         <div>Actions</div>
       </div>
       {products.map((p) => (
-        <div className={`table-row ${p.extraction_confidence < 0.5 ? "low-confidence" : ""}`} key={p._id}>
+        <div className={`table-row product-table-row ${p.extraction_confidence < 0.5 ? "low-confidence" : ""}`} key={p._id}>
           <div>
             <div className="title">{p.title || "(No title)"}</div>
             <div className="muted">SKU: {p.supplier_sku || "-"}</div>
@@ -87,18 +88,22 @@ export default function ProductTable({ products, onDecision, onEdit, onDelete, a
               // Show only mapped attributes (predefined master attributes).
               const attrs = p.mapped_attributes || {};
               const extracted = p.extracted_attributes || {};
+              const raw = p.raw_attributes || {};
               const lower = Object.fromEntries(
-                Object.entries(attrs).map(([k, v]) => [k.toLowerCase(), v])
+                Object.entries(attrs).map(([k, v]) => [normalizeAttributeKey(k), v])
               );
               const extractedLower = Object.fromEntries(
-                Object.entries(extracted).map(([k, v]) => [k.toLowerCase(), v])
+                Object.entries(extracted).map(([k, v]) => [normalizeAttributeKey(k), v])
+              );
+              const rawLower = Object.fromEntries(
+                Object.entries(raw).map(([k, v]) => [normalizeAttributeKey(k), v])
               );
               const originalKey = Object.fromEntries(
-                Object.keys(attrs).map((k) => [k.toLowerCase(), k])
+                Object.keys(attrs).map((k) => [normalizeAttributeKey(k), k])
               );
               const keys = Object.keys(lower);
               const noMapped = keys.length === 0;
-              const priority = activeAttributes.map((k) => k.toLowerCase());
+              const priority = activeAttributes.map((k) => normalizeAttributeKey(k));
               const activeLower = new Set(priority);
               const missingSet = new Set<string>();
               for (const attr of priority) {
@@ -132,10 +137,18 @@ export default function ProductTable({ products, onDecision, onEdit, onDelete, a
                         <span className="muted">Pulled from extraction or description when possible</span>
                       </div>
                       {missing.map((attr) => {
-                        const key = attr.toLowerCase();
+                        const key = normalizeAttributeKey(attr);
                         const extractedValue = extractedLower[key];
-                        const guess = extractedValue ? String(extractedValue) : guessFromDescription(p.description, attr);
-                        const sourceLabel = extractedValue ? "from extraction" : guess ? "from description" : "";
+                        const rawValue = rawLower[key];
+                        const fallbackValue = extractedValue ?? rawValue;
+                        const guess = fallbackValue ? String(fallbackValue) : guessFromDescription(p.description, attr);
+                        const sourceLabel = extractedValue
+                          ? "from extraction"
+                          : rawValue
+                            ? "from csv"
+                            : guess
+                              ? "from description"
+                              : "";
                         return (
                           <div key={attr} className="attrs-row">
                             <span>{attr}</span>

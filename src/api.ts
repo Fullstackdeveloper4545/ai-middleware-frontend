@@ -6,6 +6,7 @@ export type Product = {
   supplier_sku?: string;
   approval_status: string;
   extraction_confidence: number;
+  raw_attributes: Record<string, any>;
   mapped_attributes: Record<string, string>;
   extracted_attributes: Record<string, string>;
 };
