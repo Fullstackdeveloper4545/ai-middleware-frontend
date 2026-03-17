@@ -66,7 +66,7 @@ export default function ProductTable({ products, onDecision, onEdit, onDelete, a
         <div>Supplier</div>
         <div>Status</div>
         <div>Attributes</div>
-        <div>Actions</div>
+        <div></div>
       </div>
       {products.map((p) => (
         <div className={`table-row product-table-row ${p.extraction_confidence < 0.5 ? "low-confidence" : ""}`} key={p._id}>

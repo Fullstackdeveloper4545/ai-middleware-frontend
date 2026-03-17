@@ -54,7 +54,7 @@ export default function ManualProductForm({ suppliers, onCreate }: Props) {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
         <input value={attrs} onChange={(e) => setAttrs(e.target.value)} placeholder="Mapped attrs: Color:Red, Size:M" />
-        <button className="button" onClick={handleSubmit}>Add Product</button>
+        <button className="button small" onClick={handleSubmit}>Add Product</button>
       </div>
       {error && <div className="error-text">{error}</div>}
     </div>

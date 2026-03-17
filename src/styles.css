@@ -235,6 +235,12 @@ p {
   font-weight: 600;
 }
 
+.button.small {
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
 .button.ghost {
   background: #f6f7f9;
   color: #1f2937;
@@ -305,6 +311,8 @@ textarea {
 
 .manual-form .button {
   grid-column: span 2;
+  justify-self: flex-start;
+  width: auto;
 }
 
 .form-row {
@@ -520,7 +528,7 @@ textarea {
 
 .product-table-head,
 .product-table-row {
-  grid-template-columns: 2fr 1fr 1fr minmax(430px, 2.8fr) 1fr;
+  grid-template-columns: 1.8fr 0.9fr 0.7fr minmax(560px, 4fr) 0.7fr;
 }
 
 .product-table-row {
