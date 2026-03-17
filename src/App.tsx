@@ -51,7 +51,7 @@ export default function App() {
   const [availableAttributes, setAvailableAttributes] = useState<string[]>([]);
   const [syncQueue, setSyncQueue] = useState<any[]>([]);
   const [approvals, setApprovals] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState("");
@@ -60,6 +60,8 @@ export default function App() {
   const [isAuthed, setIsAuthed] = useState(() => sessionStorage.getItem("adminAuth") === "true");
   const [sessionTitle, setSessionTitle] = useState<string>("");
   const pollTimerRef = useRef<number | null>(null);
+  const isImportProcessing = imports.some((item) => item.status === "processing");
+  const showImportLoading = isUploading || isImportProcessing;
   const effectiveActiveAttributes = activeAttributes.length
     ? activeAttributes
     : attributes.filter((attr) => attr.active).map((attr) => attr.master_attribute);
@@ -81,6 +83,7 @@ export default function App() {
     sessionStorage.removeItem("adminAuth");
     stopPolling();
     setIsAuthed(false);
+    setIsUploading(false);
     setSelectedProduct(null);
     setImports([]);
     setProducts([]);
@@ -96,7 +99,6 @@ export default function App() {
 
   async function load() {
     try {
-      setLoading(true);
       setError(null);
       const results = await Promise.allSettled([
         fetchProducts(),
@@ -105,9 +107,10 @@ export default function App() {
         fetchAttributes(),
         fetchSyncQueue(),
         fetchApprovals(),
+        fetchAttributeSession(),
       ]);
 
-      const [productsRes, importsRes, suppliersRes, attributesRes, syncRes, approvalsRes] = results;
+      const [productsRes, importsRes, suppliersRes, attributesRes, syncRes, approvalsRes, attributeSessionRes] = results;
 
       setProducts(productsRes.status === "fulfilled" ? productsRes.value : []);
       setImports(importsRes.status === "fulfilled" ? importsRes.value : []);
@@ -115,8 +118,18 @@ export default function App() {
       setAttributes(attributesRes.status === "fulfilled" ? attributesRes.value : []);
       setSyncQueue(syncRes.status === "fulfilled" ? syncRes.value : []);
       setApprovals(approvalsRes.status === "fulfilled" ? approvalsRes.value : []);
+      if (attributeSessionRes.status === "fulfilled") {
+        setActiveAttributes(attributeSessionRes.value.selected_attributes || []);
+        setAvailableAttributes(attributeSessionRes.value.available_attributes || []);
+        setSessionTitle(attributeSessionRes.value.session_title || "");
+      } else {
+        setActiveAttributes([]);
+        setAvailableAttributes([]);
+        setSessionTitle("");
+      }
 
       const errors = results
+        .slice(0, 6)
         .filter((r): r is PromiseRejectedResult => r.status === "rejected")
         .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
 
@@ -138,43 +151,23 @@ export default function App() {
           setError(errors[0]);
         }
       }
-      try {
-        const attributeSession = await fetchAttributeSession();
-        setActiveAttributes(attributeSession.selected_attributes || []);
-        setAvailableAttributes(attributeSession.available_attributes || []);
-        setSessionTitle(attributeSession.session_title || "");
-      } catch {
-        setActiveAttributes([]);
-        setAvailableAttributes([]);
-        setSessionTitle("");
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(message);
-    } finally {
-      setLoading(false);
     }
   }
 
   useEffect(() => {
     if (!isAuthed) {
       stopPolling();
-      setLoading(false);
+      setIsUploading(false);
       return;
     }
     load();
     return () => {
       stopPolling();
     };
-  }, [isAuthed]);
-
-  useEffect(() => {
-    if (!isAuthed) {
-      return;
-    }
-    // Refresh data when switching pages so Products reflects latest imports.
-    load();
-  }, [location.pathname, isAuthed]);
+  }, [isAuthed, location.pathname]);
 
   function stopPolling() {
     if (pollTimerRef.current !== null) {
@@ -203,13 +196,14 @@ export default function App() {
     };
   }, [imports, isAuthed]);
 
-  async function pollImportUntilDone(importId: string, supplier: string) {
+  async function pollImportUntilDone(importId: string) {
     stopPolling();
     pollTimerRef.current = window.setInterval(async () => {
       try {
         const importData = await fetchImports();
         const current = importData.find((item) => item._id === importId);
         if (!current) {
+          stopPolling();
           await load();
           return;
         }
@@ -237,12 +231,13 @@ export default function App() {
     if (!supplierId) {
       throw new Error("Supplier ID required");
     }
+    setIsUploading(true);
     try {
       const result = await uploadCsv(supplierId, file);
       await load();
       const importId = result?.import_id;
       if (importId) {
-        await pollImportUntilDone(importId, supplierId);
+        await pollImportUntilDone(importId);
       }
       // Temporary: reset filters so products are visible immediately.
       setSupplierId("");
@@ -254,6 +249,8 @@ export default function App() {
       } catch {
         throw err;
       }
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -432,7 +429,7 @@ export default function App() {
         <Route path="/approvals" element={<ApprovalsPage items={approvals} />} />
       </Routes>
 
-      {loading && <div className="card">Loading...</div>}
+      {showImportLoading && <div className="card">Loading...</div>}
       {error && <div className="card error">{error}</div>}
 
       {selectedProduct && (
