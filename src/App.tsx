@@ -62,9 +62,7 @@ export default function App() {
   const pollTimerRef = useRef<number | null>(null);
   const isImportProcessing = imports.some((item) => item.status === "processing");
   const showImportLoading = isUploading || isImportProcessing;
-  const effectiveActiveAttributes = activeAttributes.length
-    ? activeAttributes
-    : attributes.filter((attr) => attr.active).map((attr) => attr.master_attribute);
+  const effectiveActiveAttributes = activeAttributes;
 
   function notify(message: string) {
     setToast(message);
