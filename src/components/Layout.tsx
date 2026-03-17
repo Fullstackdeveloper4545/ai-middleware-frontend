@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 
 type NavItem = { label: string; to: string };
@@ -25,6 +25,8 @@ export default function Layout({ children, onLogout }: Props) {
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [closeMenuAfterNav, setCloseMenuAfterNav] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isWideContent = location.pathname.startsWith("/products");
 
   function requestLeave(path: string, closeMenu = false) {
     setPendingPath(path);
@@ -114,7 +116,7 @@ export default function Layout({ children, onLogout }: Props) {
         </div>
       )}
 
-      <main className="content">{children}</main>
+      <main className={`content${isWideContent ? " wide" : ""}`}>{children}</main>
 
       {showLeave && (
         <div className="modal leave-modal">

@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+3:wght@400;500;600&display=swap");
-
 :root {
   color-scheme: light;
   --bg: #eceff3;
@@ -21,7 +19,7 @@
 
 body {
   margin: 0;
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background: var(--bg);
   color: var(--ink);
 }
@@ -53,7 +51,7 @@ body {
 .brand-title {
   font-weight: 700;
   font-size: 18px;
-  font-family: "Merriweather", serif;
+  font-family: Georgia, "Times New Roman", serif;
   letter-spacing: 0.2px;
   color: #111827;
 }
@@ -106,6 +104,10 @@ body {
   max-width: 1200px;
 }
 
+.content.wide {
+  max-width: none;
+}
+
 .mobile-topbar {
   display: none;
 }
@@ -137,13 +139,13 @@ body {
 h1 {
   margin: 0 0 6px;
   font-size: 28px;
-  font-family: "Merriweather", serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 h2 {
   margin: 0 0 10px;
   font-size: 18px;
-  font-family: "Merriweather", serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 p {
@@ -821,7 +823,7 @@ textarea {
 
 .leave-dialog h2 {
   margin: 0;
-  font-family: "Merriweather", serif;
+  font-family: Georgia, "Times New Roman", serif;
   font-size: 20px;
 }
 
@@ -940,7 +942,7 @@ textarea {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-family: "Merriweather", serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 .auth-title {
