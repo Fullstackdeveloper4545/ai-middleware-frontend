@@ -36,6 +36,7 @@ export default function MasterAttributeSessionPage({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [showEditor, setShowEditor] = useState(true);
+  const [createMode, setCreateMode] = useState(false);
 
   function sortSessions(list: AttributeSession[]) {
     return [...list].sort((a, b) => {
@@ -46,28 +47,13 @@ export default function MasterAttributeSessionPage({
     });
   }
 
-  function mergeSessions(existing: AttributeSession[], incoming: AttributeSession[]) {
-    const map = new Map<string, AttributeSession>();
-    const key = (s: AttributeSession, idx: number) => s._id || `${s.session_title || "session"}-${idx}-${Math.random()}`;
-    existing.forEach((s, i) => map.set(key(s, i), s));
-    incoming.forEach((s, i) => {
-      if (s._id) {
-        // prefer id match
-        map.set(s._id, s);
-      } else {
-        map.set(key(s, i + existing.length), s);
-      }
-    });
-    return Array.from(map.values());
-  }
-
   useEffect(() => {
     // Only reset to active session when not editing a saved card
-    if (editingSessionId) return;
+    if (editingSessionId || createMode) return;
     setSessionSelection(Array.from(new Set([...availableAttributes, ...selectedAttributes])));
     setChecked(new Set(selectedAttributes));
     setTitle(sessionTitle ?? "");
-  }, [selectedAttributes, availableAttributes, sessionTitle, editingSessionId]);
+  }, [selectedAttributes, availableAttributes, sessionTitle, editingSessionId, createMode]);
 
   useEffect(() => {
     loadSessions();
@@ -77,18 +63,20 @@ export default function MasterAttributeSessionPage({
     try {
       setLoadingSessions(true);
       const list = await fetchAttributeSessions();
-      let active: AttributeSession | undefined;
-      setSessions((prev) => {
-        const merged = mergeSessions(prev, list);
-        const sorted = sortSessions(merged);
-        active = sorted.find((s) => s.is_active) || sorted[0];
-        return sorted;
-      });
+      const sorted = sortSessions(list);
+      setSessions(sorted);
+      const active = sorted.find((s) => s.is_active) || sorted[0];
       setActiveSessionId(active?._id || null);
-      if (active && !editingSessionId) {
-        setSessionSelection(Array.from(new Set([...(active.available_attributes || []), ...(active.selected_attributes || [])])));
-        setChecked(new Set(active.selected_attributes || []));
-        setTitle(active.session_title || "");
+      if (!editingSessionId && !createMode) {
+        if (active) {
+          setSessionSelection(Array.from(new Set([...(active.available_attributes || []), ...(active.selected_attributes || [])])));
+          setChecked(new Set(active.selected_attributes || []));
+          setTitle(active.session_title || "");
+        } else {
+          setSessionSelection([]);
+          setChecked(new Set());
+          setTitle("");
+        }
       }
     } catch (err) {
       console.error(err);
@@ -104,12 +92,14 @@ export default function MasterAttributeSessionPage({
     const sessionTitleValue = (title ?? "").trim();
     setSavingSession(true);
     try {
-      const saved = await onSaveAttributeSession(selected, sessionAttributes, sessionTitleValue, editingSessionId);
+      const targetSessionId = createMode ? null : (editingSessionId ?? activeSessionId);
+      const saved = await onSaveAttributeSession(selected, sessionAttributes, sessionTitleValue, targetSessionId);
       // Ensure the card shows the title we just entered even if backend omits it
       const normalizedSaved = { ...saved, session_title: saved.session_title ?? sessionTitleValue };
       // Optimistically update list so it appears immediately
       setSessions((prev) => sortSessions([...prev.filter((s) => s._id !== normalizedSaved._id), { ...normalizedSaved }]));
       setEditingSessionId(null);
+      setCreateMode(false);
       setSessionSelection(Array.from(new Set([...(normalizedSaved.available_attributes || []), ...(normalizedSaved.selected_attributes || [])])));
       setChecked(new Set(normalizedSaved.selected_attributes || []));
       setTitle("");
@@ -157,6 +147,13 @@ export default function MasterAttributeSessionPage({
     const updated = sessionSelection.filter((item) => item !== removeTarget);
     const nextChecked = new Set(checked);
     nextChecked.delete(removeTarget);
+    if (createMode) {
+      setSessionSelection(updated);
+      setChecked(nextChecked);
+      setRemoveTarget(null);
+      setRemoveError(null);
+      return;
+    }
     const targetSessionId = editingSessionId ?? activeSessionId;
     if (!targetSessionId) {
       setRemoveError("Session id missing; please refresh and try again.");
@@ -267,7 +264,7 @@ export default function MasterAttributeSessionPage({
                 {savingSession ? "Saving..." : "Save Session"}
               </button>
               {editingSessionId && (
-                <button className="button ghost" type="button" onClick={() => setEditingSessionId(null)} disabled={savingSession}>
+                <button className="button ghost" type="button" onClick={() => { setEditingSessionId(null); setCreateMode(false); }} disabled={savingSession}>
                   Cancel Edit
                 </button>
               )}
@@ -286,6 +283,7 @@ export default function MasterAttributeSessionPage({
             onClick={() => {
               setShowEditor(true);
               setEditingSessionId(null);
+              setCreateMode(true);
               setSessionSelection([]);
               setChecked(new Set());
               setTitle("");
@@ -321,6 +319,7 @@ export default function MasterAttributeSessionPage({
                       onClick={() => {
                         setShowEditor(true);
                         setEditingSessionId(session._id || null);
+                        setCreateMode(false);
                         setSessionSelection(Array.from(new Set([...(session.available_attributes || []), ...(session.selected_attributes || [])])));
                         setChecked(new Set(session.selected_attributes || []));
                         setTitle(session.session_title || "");
