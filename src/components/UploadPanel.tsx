@@ -71,7 +71,7 @@ export default function UploadPanel({ onUpload, suppliers, onSelectSupplier, sel
         <select value={selectedSupplier} onChange={(e) => onSelectSupplier(e.target.value)}>
           <option value="">Select supplier</option>
           {suppliers.map((s) => (
-            <option key={s._id} value={s._id}>{s.name} ({s.code})</option>
+            <option key={s._id} value={s._id}>{s.name} ({s.code})</option> 
           ))}
         </select>
         <input ref={fileRef} type="file" accept=".csv,.xml" />

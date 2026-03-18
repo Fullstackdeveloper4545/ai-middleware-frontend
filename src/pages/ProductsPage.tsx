@@ -46,7 +46,7 @@ export default function ProductsPage({
           s.code.toLowerCase().includes(supplierFilter) ||
           s.name.toLowerCase().includes(supplierFilter)
         )
-        .map((s) => s._id)
+        .map((s) => s._id)      
   );
   const filteredProducts = products.filter((p) => {
     let supplierMatch = true;

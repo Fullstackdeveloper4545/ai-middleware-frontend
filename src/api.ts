@@ -22,6 +22,15 @@ export type ImportItem = {
   error?: string;
 };
 
+export type ImportCreateResponse = {
+  import_id: string;
+  supplier_id: string;
+  source_type: string;
+  source_ref: string;
+  total_rows: number;
+  created_at: string;
+};
+
 export type Supplier = {
   _id: string;
   name: string;
@@ -67,7 +76,6 @@ export type ApprovalItem = {
   updated_at: string;
 };
 
-
 function normalizeApiBase(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -79,9 +87,45 @@ function normalizeApiBase(value: string): string {
   return withoutTrailingSlashes;
 }
 
-export const API_BASE =
-  normalizeApiBase((import.meta.env.VITE_API_BASE as string | undefined) ?? "") || "http://127.0.0.1:8000";
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
 
+function getDefaultApiBase(): string {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000";
+  }
+  return isLocalHostname(window.location.hostname) ? "http://127.0.0.1:8000" : "";
+}
+
+const ENV_API_BASE = normalizeApiBase((import.meta.env.VITE_API_BASE as string | undefined) ?? "");
+
+export const API_BASE = ENV_API_BASE || getDefaultApiBase();
+
+function getApiBase(): string {
+  const base = ENV_API_BASE || getDefaultApiBase();
+  if (!base) {
+    throw new Error("Missing VITE_API_BASE. Set it to your backend URL and redeploy.");
+  }
+
+  const isBrowser = typeof window !== "undefined";
+  const isRemoteFrontend = isBrowser && !isLocalHostname(window.location.hostname);
+  const isLocalApi = base.includes("127.0.0.1") || base.includes("localhost");
+
+  if (isRemoteFrontend && isLocalApi) {
+    throw new Error(
+      `Frontend is configured to call a local backend (${base}). Set VITE_API_BASE to your backend URL and redeploy.`,
+    );
+  }
+
+  return base;
+}
+
+function apiUrl(path: string): string {
+  return getApiBase() + path;
+}
+
+const DEFAULT_TIMEOUT_MS = 15000;
 function authHeaders(): Record<string, string> {
   const key = localStorage.getItem("api_key");
   return key ? { "X-API-Key": key } : {};
@@ -97,131 +141,134 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit = {}, time
   }
 }
 
+async function apiFetch(input: RequestInfo, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  try {
+    return await fetchWithTimeout(input, init, timeoutMs);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.ceil(timeoutMs / 1000)}s`);
+    }
+    throw err;
+  }
+}
+
+async function parseErrorMessage(res: Response, fallback: string): Promise<string> {
+  const text = await res.text();
+  if (!text) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return parsed?.detail || parsed?.message || fallback;
+  } catch {
+    return text;
+  }
+}
+
+async function requestJson<T>(input: RequestInfo, init: RequestInit = {}, fallback = "Request failed", timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const res = await apiFetch(input, init, timeoutMs);
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, fallback));
+  }
+  return res.json();
+}
+
+async function request(input: RequestInfo, init: RequestInit = {}, fallback = "Request failed", timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
+  const res = await apiFetch(input, init, timeoutMs);
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, fallback));
+  }
+  return res;
+}
 export async function fetchProducts(params?: { supplierId?: string; status?: string }): Promise<Product[]> {
-  const url = new URL(API_BASE + "/api/products");
+  const url = new URL(apiUrl("/api/products"));
   if (params?.supplierId) url.searchParams.set("supplier_id", params.supplierId);
   if (params?.status) url.searchParams.set("status", params.status);
-  const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch products");
-  return res.json();
+  return requestJson<Product[]>(url.toString(), { headers: authHeaders() }, "Failed to fetch products");
 }
 
 export async function fetchImports(params?: { supplierId?: string }): Promise<ImportItem[]> {
-  const url = new URL(API_BASE + "/api/imports");
+  const url = new URL(apiUrl("/api/imports"));
   if (params?.supplierId) url.searchParams.set("supplier_id", params.supplierId);
-  const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch imports");
-  return res.json();
+  return requestJson<ImportItem[]>(url.toString(), { headers: authHeaders() }, "Failed to fetch imports");
 }
 
 export async function fetchSuppliers(): Promise<Supplier[]> {
-  const res = await fetch(API_BASE + "/api/suppliers", { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch suppliers");
-  return res.json();
+  return requestJson<Supplier[]>(apiUrl("/api/suppliers"), { headers: authHeaders() }, "Failed to fetch suppliers");
 }
 
 export async function createSupplier(payload: { name: string; code: string }): Promise<Supplier> {
-  const res = await fetch(API_BASE + "/api/suppliers", {
+  return requestJson<Supplier>(apiUrl("/api/suppliers"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to create supplier");
-  return res.json();
+  }, "Failed to create supplier");
 }
 
 export async function updateSupplier(id: string, payload: { name?: string; code?: string; status?: string }): Promise<Supplier> {
-  const res = await fetch(API_BASE + `/api/suppliers/${id}`, {
+  return requestJson<Supplier>(apiUrl(`/api/suppliers/${id}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to update supplier");
-  return res.json();
+  }, "Failed to update supplier");
 }
 
 export async function deleteSupplier(id: string) {
-  const res = await fetch(API_BASE + `/api/suppliers/${id}`, {
+  return requestJson(apiUrl(`/api/suppliers/${id}`), {
     method: "DELETE",
     headers: { ...authHeaders() },
-  });
-  if (!res.ok) throw new Error("Failed to delete supplier");
-  return res.json();
+  }, "Failed to delete supplier");
 }
 
 
 export async function fetchAttributes(): Promise<AttributeRule[]> {
-  const res = await fetch(API_BASE + "/api/attributes", { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch attributes");
-  return res.json();
+  return requestJson<AttributeRule[]>(apiUrl("/api/attributes"), { headers: authHeaders() }, "Failed to fetch attributes");
 }
 
 export async function upsertAttribute(payload: { master_attribute: string; allowed_values: string[]; rules?: string }) {
-  const res = await fetch(API_BASE + "/api/attributes", {
+  return requestJson(apiUrl("/api/attributes"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to upsert attribute");
-  return res.json();
+  }, "Failed to upsert attribute");
 }
 
 export async function fetchAttributeSession(): Promise<AttributeSession> {
-  const res = await fetch(API_BASE + "/api/attributes/session", { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch attribute session");
-  return res.json();
+  return requestJson<AttributeSession>(apiUrl("/api/attributes/session"), { headers: authHeaders() }, "Failed to fetch attribute session");
 }
 
 export async function fetchAttributeSessions(): Promise<AttributeSession[]> {
-  const res = await fetch(API_BASE + "/api/attributes/sessions", { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch attribute sessions");
-  return res.json();
+  return requestJson<AttributeSession[]>(apiUrl("/api/attributes/sessions"), { headers: authHeaders() }, "Failed to fetch attribute sessions");
 }
 
 export async function activateAttributeSession(sessionId: string): Promise<AttributeSession> {
-  const res = await fetch(API_BASE + `/api/attributes/sessions/${sessionId}/activate`, {
+  return requestJson<AttributeSession>(apiUrl(`/api/attributes/sessions/${sessionId}/activate`), {
     method: "POST",
     headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error("Failed to activate attribute session");
-  return res.json();
+  }, "Failed to activate attribute session");
 }
 
 export async function deleteAttributeSession(sessionId: string) {
-  const res = await fetch(API_BASE + `/api/attributes/sessions/${sessionId}`, {
+  return requestJson(apiUrl(`/api/attributes/sessions/${sessionId}`), {
     method: "DELETE",
     headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error("Failed to delete attribute session");
-  return res.json();
+  }, "Failed to delete attribute session");
 }
 
 export async function saveAttributeSession(payload: { selected_attributes: string[]; available_attributes?: string[]; session_title?: string | null; session_id?: string | null }): Promise<AttributeSession> {
-  const res = await fetch(API_BASE + "/api/attributes/session", {
+  return requestJson<AttributeSession>(apiUrl("/api/attributes/session"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to save attribute session");
-  return res.json();
+  }, "Failed to save attribute session");
 }
 
-export async function uploadCsv(supplierId: string, file: File) {
+export async function uploadCsv(supplierId: string, file: File): Promise<ImportCreateResponse> {
   const form = new FormData();
   form.append("file", file);
-  const url = new URL(API_BASE + "/api/imports/csv");
+  const url = new URL(apiUrl("/api/imports/csv"));
   url.searchParams.set("supplier_id", supplierId);
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(url.toString(), { method: "POST", body: form, headers: authHeaders() }, 30000);
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Upload timed out. Please try again.");
-    }
-    throw err;
-  }
-  if (!res.ok) throw new Error("CSV upload failed");
-  return res.json();
+  return requestJson<ImportCreateResponse>(url.toString(), { method: "POST", body: form, headers: authHeaders() }, "CSV upload failed", 30000);
 }
 
 export async function createProduct(payload: {
@@ -231,88 +278,71 @@ export async function createProduct(payload: {
   supplier_sku?: string;
   mapped_attributes?: Record<string, any>;
 }) {
-  const res = await fetch(API_BASE + "/api/products", {
+  return requestJson(apiUrl("/api/products"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to create product");
-  return res.json();
+  }, "Failed to create product");
 }
 
 export async function updateProduct(productId: string, payload: { title?: string; description?: string; mapped_attributes?: Record<string, any> }) {
-  const res = await fetch(API_BASE + `/api/products/${productId}`, {
+  return requestJson(apiUrl(`/api/products/${productId}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to update product");
-  return res.json();
+  }, "Failed to update product");
 }
 
 export async function deleteProduct(productId: string) {
-  const res = await fetch(API_BASE + `/api/products/${productId}`, {
+  return requestJson(apiUrl(`/api/products/${productId}`), {
     method: "DELETE",
     headers: { ...authHeaders() },
-  });
-  if (!res.ok) throw new Error("Failed to delete product");
-  return res.json();
+  }, "Failed to delete product");
 }
 
 export async function approveProduct(productId: string, status: "approved" | "rejected") {
-  const res = await fetch(API_BASE + `/api/products/${productId}/approve`, {
+  await request(apiUrl(`/api/products/${productId}/approve`), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ status }),
-  });
-  if (!res.ok) throw new Error("Failed to update status");
+  }, "Failed to update status");
 }
 
 export async function fetchApprovals(params?: { productId?: string }): Promise<ApprovalItem[]> {
-  const url = new URL(API_BASE + "/api/approvals");
+  const url = new URL(apiUrl("/api/approvals"));
   if (params?.productId) url.searchParams.set("product_id", params.productId);
-  const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch approvals");
-  return res.json();
+  return requestJson<ApprovalItem[]>(url.toString(), { headers: authHeaders() }, "Failed to fetch approvals");
 }
 
 export async function enqueueSync(payload: { supplier_id?: string }) {
-  const res = await fetch(API_BASE + "/api/sync/enqueue", {
+  return requestJson(apiUrl("/api/sync/enqueue"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to enqueue sync");
-  return res.json();
+  }, "Failed to enqueue sync");
 }
 
 export async function processSync(payload: { limit: number }) {
-  const res = await fetch(API_BASE + "/api/sync/process", {
+  return requestJson(apiUrl("/api/sync/process"), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error("Failed to process sync queue");
-  return res.json();
+  }, "Failed to process sync queue");
 }
 
 export async function fetchSyncQueue(): Promise<SyncItem[]> {
-  const res = await fetch(API_BASE + "/api/sync/queue", { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to fetch sync queue");
-  return res.json();
+  return requestJson<SyncItem[]>(apiUrl("/api/sync/queue"), { headers: authHeaders() }, "Failed to fetch sync queue");
 }
 
 export async function seedDemo() {
-  const res = await fetch(API_BASE + "/api/seed", {
+  return requestJson(apiUrl("/api/seed"), {
     method: "POST",
     headers: { ...authHeaders() },
-  });
-  if (!res.ok) throw new Error("Failed to seed demo data");
-  return res.json();
+  }, "Failed to seed demo data");
 }
 
 export async function requestPasswordReset(email: string): Promise<string> {
-  const res = await fetch(API_BASE + "/auth/forgot", {
+  const res = await apiFetch(apiUrl("/auth/forgot"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -333,7 +363,7 @@ export async function requestPasswordReset(email: string): Promise<string> {
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<string> {
-  const res = await fetch(API_BASE + "/auth/reset", {
+  const res = await apiFetch(apiUrl("/auth/reset"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
@@ -353,7 +383,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export async function login(username: string, password: string) {
-  const res = await fetch(API_BASE + "/auth/login", {
+  const res = await apiFetch(apiUrl("/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
